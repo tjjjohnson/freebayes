@@ -456,6 +456,7 @@ Parameters::Parameters(int argc, char** argv) {
     probContamination = 10e-9;
     //minAltQSumTotal = 0;
     minCoverage = 0;
+    maxCoverage = 9999999;
     debuglevel = 0;
     debug = false;
     debug2 = false;
@@ -526,6 +527,7 @@ Parameters::Parameters(int argc, char** argv) {
             //{"min-alternate-mean-mapq", required_argument, 0, 'k'},
             {"min-alternate-qsum", required_argument, 0, '3'},
             {"min-coverage", required_argument, 0, '!'},
+            {"max-coverage", required_argument, 0, 'E'},
             {"genotype-qualities", no_argument, 0, '='},
             {"variant-input", required_argument, 0, '@'},
             {"only-use-input-alleles", no_argument, 0, 'l'},

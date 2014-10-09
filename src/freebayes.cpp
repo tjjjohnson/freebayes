@@ -163,6 +163,9 @@ int main (int argc, char *argv[]) {
             } else if (coverage < parameters.minCoverage) {
                 DEBUG("post-filtering coverage of " << coverage << " is less than --min-coverage of " << parameters.minCoverage);
                 continue;
+            } else if (coverage > parameters.maxCoverage) {
+                DEBUG("post-filtering coverage of " << coverage << " is greater than --max-coverage of " << parameters.maxCoverage);
+                continue;
             } else if (parameters.onlyUseInputAlleles) {
                 DEBUG("no input alleles, but using only input alleles for analysis, skipping position");
                 continue;
