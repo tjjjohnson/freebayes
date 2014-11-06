@@ -268,6 +268,8 @@ void Parameters::usage(char** argv) {
         << "                   to use the allele in analysis.  default: 1" << endl
         << "   -! --min-coverage N" << endl
         << "                   Require at least this coverage to process a site.  default: 0" << endl
+        << "   --max-coverage N" << endl
+        << "                   Don't process site if coverage is great than this.  default: 0" << endl
         << endl
         << "population priors:" << endl
         << endl
@@ -714,12 +716,16 @@ Parameters::Parameters(int argc, char** argv) {
                     cerr << "could not parse " << arg << endl;
                     exit(1);
                 }
+            } else if ( arg == "--max-coverage") {
+                if (!convert(optarg, maxCoverage)) {
+                    cerr << "could not parse" << arg << endl;
+                }
             } else {
                 if (!convert(optarg, maxComplexGap)) {
                     cerr << "could not parse maxComplexGap" << endl;
                     exit(1);
                 }
-            }
+            } 
             break;
         }
 

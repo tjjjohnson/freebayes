@@ -35,6 +35,7 @@
 #include "DataLikelihood.h"
 #include "Marginals.h"
 #include "ResultData.h"
+#include "BGZF.cpp"
 
 #include "Bias.h"
 #include "Contamination.h"
@@ -58,6 +59,12 @@
 
 
 using namespace std; 
+
+bool recordRegionOverMaxCoverageFilter(BgzfData *regionsBedFile, string sequenceName, long startPos, long endPos, int coverage) {
+    char bedLine[500];
+    sprintf(bedLine, "%s\t%lu\t%ld\tOverMaxCoverage\t%d\n", sequenceName.c_str(), startPos, endPos, coverage);
+    regionsBedFile->Write(bedLine, strlen(bedLine));
+}
 
 
 // freebayes main
@@ -113,6 +120,13 @@ int main (int argc, char *argv[]) {
 
     Allele nullAllele = genotypeAllele(ALLELE_NULL, "N", 1, "1N");
 
+    BgzfData regionsBedFile; 
+    regionsBedFile.Open("regions.bed.gz", "wb", false);
+    long unsigned int startPostionOfRegionFilteredOutByMaxCoverage = -1;
+    int sitesInRegionFilteredOutByMaxCoverage = 0;
+    long coverageSumInRegionFilteredOutByMaxCoverage = 0;
+    string sequenceNameOfRegionFilteredOutByMaxCoverage = "";
+
     unsigned long total_sites = 0;
     unsigned long processed_sites = 0;
 
@@ -152,26 +166,52 @@ int main (int argc, char *argv[]) {
         }
 
         int coverage = countAlleles(samples);
+        
+         
 
         DEBUG("position: " << parser->currentSequenceName << ":" << (long unsigned int) parser->currentPosition + 1 << " coverage: " << coverage);
+       // cerr << "position: " << parser->currentSequenceName << ":" << (long unsigned int) parser->currentPosition + 1 << " coverage: " << coverage << endl;
+
+        if (coverage > parameters.maxCoverage) {
+            // record start of high coverage region
+            if (startPostionOfRegionFilteredOutByMaxCoverage == -1) {
+                startPostionOfRegionFilteredOutByMaxCoverage = parser->currentPosition;
+                //cerr << "Start of region above max-coverage " << parser->currentSequenceName << ":" << (long unsigned int) parser->currentPosition + 1 << endl;
+            }
+            sitesInRegionFilteredOutByMaxCoverage ++;
+            coverageSumInRegionFilteredOutByMaxCoverage += coverage;
+
+            DEBUG("post-filtering coverage of " << coverage << " is greater than --max-coverage of " << parameters.maxCoverage); 
+            //cerr << parser->currentSequenceName << ":" << parser->currentPosition << " - post-filtering coverage of " << coverage << " is greater than --max-coverage of " << parameters.maxCoverage << endl;
+            continue;
+        } else {
+            // record end of extreme coverage region and write to regions.bed.gz
+            if (startPostionOfRegionFilteredOutByMaxCoverage != -1) {
+                //sprintf(bedLine, "%s\t%lu\t%ld\tOverMaxCoverage\t%d\n", parser->currentSequenceName.c_str(), startPostionOfRegionFilteredOutByMaxCoverage, parser->currentPosition, coverage);    
+                recordRegionOverMaxCoverageFilter(&regionsBedFile, parser->currentSequenceName, startPostionOfRegionFilteredOutByMaxCoverage, parser->currentPosition, coverageSumInRegionFilteredOutByMaxCoverage / sitesInRegionFilteredOutByMaxCoverage);
+                startPostionOfRegionFilteredOutByMaxCoverage = -1;
+                sequenceNameOfRegionFilteredOutByMaxCoverage = "";
+                sitesInRegionFilteredOutByMaxCoverage = 0;
+                coverageSumInRegionFilteredOutByMaxCoverage = 0;
+            }
+        }
 
         if (!parser->hasInputVariantAllelesAtCurrentPosition()) {
             // skips 0-coverage regions
+        
             if (coverage == 0) {
                 DEBUG("no alleles left at this site after filtering");
                 continue;
             } else if (coverage < parameters.minCoverage) {
                 DEBUG("post-filtering coverage of " << coverage << " is less than --min-coverage of " << parameters.minCoverage);
                 continue;
-            } else if (coverage > parameters.maxCoverage) {
-                DEBUG("post-filtering coverage of " << coverage << " is greater than --max-coverage of " << parameters.maxCoverage);
-                continue;
-            } else if (parameters.onlyUseInputAlleles) {
+            }  else if (parameters.onlyUseInputAlleles) {
                 DEBUG("no input alleles, but using only input alleles for analysis, skipping position");
                 continue;
             }
 
             DEBUG2("coverage " << parser->currentSequenceName << ":" << parser->currentPosition << " == " << coverage);
+
 
             // establish a set of possible alternate alleles to evaluate at this location
 
@@ -184,6 +224,7 @@ int main (int argc, char *argv[]) {
                 DEBUG("calling at site even though there are no alternate observations");
             }
         } else {
+            cerr << "has input variants at " << parser->currentSequenceName << ":" << parser->currentPosition << endl;
             /*
             cerr << "has input variants at " << parser->currentSequenceName << ":" << parser->currentPosition << endl;
             vector<Allele>& inputs = parser->inputVariantAlleles[parser->currentPosition];
@@ -353,7 +394,7 @@ int main (int argc, char *argv[]) {
                                                     genotypeAlleles,
                                                     contaminationEstimates,
                                                     estimatedAlleleFrequencies);
-            
+
 #ifdef VERBOSE_DEBUG
             if (parameters.debug2) {
                 for (vector<pair<Genotype*, long double> >::iterator p = probs.begin(); p != probs.end(); ++p) {
@@ -739,6 +780,12 @@ int main (int argc, char *argv[]) {
         DEBUG2("finished position");
 
     }
+
+    // are there any high coverage regions that need to be closed off
+    if (startPostionOfRegionFilteredOutByMaxCoverage != -1) {
+        recordRegionOverMaxCoverageFilter(&regionsBedFile, parser->currentSequenceName, startPostionOfRegionFilteredOutByMaxCoverage, parser->currentPosition, coverageSumInRegionFilteredOutByMaxCoverage / sitesInRegionFilteredOutByMaxCoverage);
+    }
+    regionsBedFile.Close();
 
     DEBUG("total sites: " << total_sites << endl
           << "processed sites: " << processed_sites << endl
